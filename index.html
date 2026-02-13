@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartSeat - Class Layout Manager</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --secondary: #64748b;
+            --background: #f8fafc;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --admin-bg: #fff7ed;
+            --admin-border: #f97316;
+            /* UD Font Priority Stack */
+            --font-main: "BIZ UDPGothic", "BIZ UDPゴシック", "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #0f172a;
+                --surface: #1e293b;
+                --text: #f1f5f9;
+                --text-light: #94a3b8;
+                --admin-bg: #2a1810;
+            }
+        }
+
+        * { box-sizing: border-box; touch-action: manipulation; }
+        body { margin: 0; font-family: var(--font-main); background: var(--background); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Utilities */
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 0.5rem; }
+        .gap-4 { gap: 1rem; }
+        .p-4 { padding: 1rem; }
+        .w-full { width: 100%; }
+        .text-center { text-align: center; }
+        .font-bold { font-weight: 800; } /* Extra Bold */
+        .rounded { border-radius: 0.5rem; }
+        .shadow { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .text-sm { font-size: 0.85rem; }
+        .text-red { color: var(--danger); }
+
+        /* UI Elements */
+        button {
+            cursor: pointer;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 700;
+            transition: all 0.2s;
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--secondary);
+            font-family: var(--font-main);
+        }
+        button:active { transform: scale(0.98); }
+        button.primary { background: var(--primary); color: white; border: none; }
+        button.primary:hover { background: var(--primary-dark); }
+        button.danger { background: var(--danger); color: white; border: none; }
+        button.admin { background: var(--warning); color: white; border: none; }
+        button.small { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+        
+        input, select {
+            padding: 0.5rem;
+            border: 1px solid var(--secondary);
+            border-radius: 0.25rem;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 1rem;
+            font-family: var(--font-main);
+        }
+        
+        /* Layout Input Specifics */
+        .layout-input { text-align: center; width: 60px; }
+
+        /* Switch Toggle */
+        .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(22px); }
+
+        /* Layout */
+        #app-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        
+        /* Header */
+        header {
+            padding: 1rem;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+        .logo { font-size: 1.5rem; font-weight: 900; color: var(--primary); cursor: pointer; user-select: none; }
+        
+        /* Stage (Classroom) */
+        #stage-area {
+            flex: 1;
+            overflow: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #pulpit {
+            width: 240px;
+            height: 50px;
+            background: var(--secondary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+            font-size: 1.2rem;
+            font-weight: 900; /* Bold */
+            opacity: 0.9;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Grid */
+        #seat-grid {
+            display: grid;
+            gap: 1rem;
+            margin: 0 auto;
+            max-width: 100%;
+        }
+        
+        /* Seat Design: Landscape Rectangle (Desk-like) */
+        .seat {
+            width: 110px;  /* Default, overridden by JS */
+            height: 65px;  /* Default, overridden by JS */
+            background: var(--surface);
+            border: 2px solid #cbd5e1;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 900; /* Bold */
+            position: relative;
+            transition: transform 0.1s, border-color 0.1s;
+            cursor: default;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden; /* Prevent stretch */
+        }
+        
+        .seat.void { background: transparent; border: 2px dashed #cbd5e1; opacity: 0.3; }
+        .seat.void span { display: none; }
+        .seat.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); transform: translateY(-2px); z-index: 5; }
+        
+        /* Seat contents */
+        .seat-num { font-size: 0.7rem; color: var(--text-light); position: absolute; top: 2px; left: 5px; font-weight: normal; }
+        .seat-name { 
+            text-align: center; 
+            line-height: 1.2; 
+            padding: 0 4px; 
+            width: 100%; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            color: var(--text);
+        }
+        
+        /* Animation States */
+        .seat.shuffling { background-color: #f0f9ff; border-color: var(--primary); }
+        .seat.flash { animation: flash 0.6s ease-out; }
+
+        @keyframes flash {
+            0% { background-color: var(--surface); transform: scale(1); }
+            50% { background-color: #fef08a; border-color: #eab308; transform: scale(1.1); box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
+            100% { background-color: var(--surface); transform: scale(1); }
+        }
+
+        /* Admin Panel */
+        #admin-panel {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--admin-bg);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+        }
+        #admin-panel.hidden { display: none; }
+        
+        .admin-header {
+            background: var(--warning); /* Orange for caution */
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .admin-content {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .tab-nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #fed7aa; padding-bottom: 0.5rem; overflow-x: auto; }
+        .tab-btn { background: transparent; border: none; color: #7c2d12; border-radius: 4px; padding: 0.5rem 1rem; white-space: nowrap; }
+        .tab-btn.active { background: #ffedd5; color: #c2410c; font-weight: bold; }
+
+        .card { background: var(--surface); padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; border-left: 4px solid var(--warning); }
+        .card h3 { margin-top: 0; color: var(--text); border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+
+        /* General Modal */
+        #selector-overlay, #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 150;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        
+        .modal-box {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 90%;
+            width: 500px;
+            max-height: 85vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Selection Grid - OPTIMIZED for Large Classes */
+        .selector-modal {
+            background: var(--surface);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 95%;
+            width: 800px;
+            /* Force modal to stay within screen */
+            max-height: 85vh; 
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .selector-header, .selector-footer {
+            flex-shrink: 0; /* Do not shrink */
+        }
+
+        .selector-body {
+            flex: 1; /* Grow to fill space */
+            overflow-y: auto; /* Scroll internally */
+            margin: 1rem 0;
+            border-top: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 0;
+        }
+
+        .selection-grid {
+            display: grid;
+            /* Smaller minimum width to pack more items horizontally */
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 0.5rem;
+            width: 100%;
+        }
+        
+        .student-chip {
+            padding: 0.5rem;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+            transition: all 0.1s;
+        }
+        .student-chip:hover { background: #e2e8f0; border-color: #94a3b8; transform: translateY(-1px); }
+        .student-chip:active { transform: translateY(0); }
+
+        /* Controls Area & Colorful Buttons */
+        #controls-area {
+            padding: 1rem;
+            background: var(--surface);
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column; /* Stack label and buttons */
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .start-btn-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .btn-label { 
+            width: 100%; 
+            text-align: center; 
+            margin-bottom: 0.5rem; 
+            font-weight: bold; 
+            color: var(--text-light); 
+            font-size: 1.1rem;
+        }
+
+        .btn-game {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            color: white;
+            font-weight: 900;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0.5rem;
+        }
+        .btn-game:active { transform: scale(0.9) translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .btn-game:hover { filter: brightness(1.1); }
+        .btn-game:disabled { background: #cbd5e1 !important; cursor: not-allowed; box-shadow: none; transform: none; color: #94a3b8; }
+
+        .bg-red { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+        .bg-blue { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+        .bg-green { background: linear-gradient(135deg, #22c55e, #15803d); }
+        .bg-yellow { background: linear-gradient(135deg, #eab308, #a16207); text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .bg-purple { background: linear-gradient(135deg, #a855f7, #7e22ce); }
+
+        /* Print Area (Hidden by default) */
+        #print-area { display: none; }
+
+        /* Print Styles (Critical Update) */
+        @media print {
+            header, #controls-area, #admin-panel, #selector-overlay, #modal-overlay { display: none !important; }
+            body, #app-container { height: auto; overflow: visible; background: white; display: block; }
+            #stage-area { display: none; }
+            #print-area { display: block; width: 100%; }
+            @page { size: A4 landscape; margin: 5mm; }
+
+            .print-page {
+                width: 100%; height: 98vh; page-break-after: always;
+                display: flex; flex-direction: column; justify-content: space-between;
+                align-items: center; padding: 10px; box-sizing: border-box;
+            }
+            .print-page:last-child { page-break-after: avoid; }
+            .print-header { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; text-align: center; width: 100%; border-bottom: 2px solid #000; }
+            .print-pulpit { width: 300px; height: 40px; background: #ccc; border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; margin: 10px 0; }
+            .print-grid { display: grid; gap: 10px; width: 98%; flex-grow: 1; align-content: stretch; }
+            .print-seat { border: 2px solid #000; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; width: 100%; height: 100%; min-height: 0; }
+            .print-seat.void { border: 2px dashed #999; opacity: 0.5; }
+            .print-seat.void * { display: none; }
+            .print-num { position: absolute; top: 2px; left: 5px; font-size: 10pt; }
+            .print-name { font-size: 16pt; font-weight: 900; text-align: center; line-height: 1.1; width: 95%; word-wrap: break-word; }
+            
+            .page-teacher .print-grid { transform: rotate(180deg); }
+            .page-teacher .print-seat { transform: rotate(180deg); }
+            .page-teacher { flex-direction: column-reverse; }
+            .page-teacher .print-pulpit { margin-top: 10px; margin-bottom: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <!-- Public Header -->
+    <header class="flex justify-between items-center">
+        <div class="flex items-center">
+            <!-- Hidden Command Trigger -->
+            <div id="logo-trigger" class="logo" title="設定">SmartSeat</div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="zoomGrid(1)">＋</button>
+            <button onclick="zoomGrid(-1)">－</button>
+            <button onclick="exportAppData()">保存</button>
+            <button onclick="resetDisplay()">リセット</button>
+            <button onclick="window.print()" class="no-print">印刷</button>
+        </div>
+    </header>
+
+    <!-- Stage Area -->
+    <div id="stage-area">
+        <div id="pulpit">教卓</div>
+        <div id="seat-grid">
+            <!-- Grid will be generated here -->
+        </div>
+    </div>
+
+    <!-- Bottom Controls (5 Buttons) -->
+    <div id="controls-area">
+        <div class="btn-label">いずれかの色を選んでスタート！</div>
+        <div class="start-btn-container">
+            <button class="btn-game bg-red start-btn" onclick="startRoulette()">1</button>
+            <button class="btn-game bg-blue start-btn" onclick="startRoulette()">2</button>
+            <button class="btn-game bg-green start-btn" onclick="startRoulette()">3</button>
+            <button class="btn-game bg-yellow start-btn" onclick="startRoulette()">4</button>
+            <button class="btn-game bg-purple start-btn" onclick="startRoulette()">5</button>
+        </div>
+    </div>
+</div>
+
+<!-- Print Area (Dedicated for Print) -->
+<div id="print-area">
+    <!-- Page 1: Student View (Pulpit Top) -->
+    <div class="print-page page-student">
+        <div class="print-header">座席表 (前方)</div>
+        <div class="print-pulpit">教卓</div>
+        <div id="print-grid-student" class="print-grid"></div>
+    </div>
+    
+    <!-- Page 2: Teacher View (Pulpit Bottom) -->
+    <div class="print-page page-teacher">
+        <div class="print-pulpit">教卓</div>
+        <div id="print-grid-teacher" class="print-grid"></div>
+    </div>
+</div>
+
+<!-- Admin Panel (Hidden) -->
+<div id="admin-panel" class="hidden">
+    <div class="admin-header">
+        <div class="font-bold text-lg">🔧 教員用管理モード</div>
+        <div class="flex gap-2 items-center">
+            <span id="counter-display" class="hidden" style="font-family:monospace; background:rgba(0,0,0,0.2); padding:2px 8px; border-radius:4px;">Count: 0</span>
+            <button class="primary" onclick="exitAdmin()">戻る</button>
+        </div>
+    </div>
+    
+    <div class="admin-content">
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('tab-intro')">はじめに</button>
+            <button class="tab-btn" onclick="switchTab('tab-layout')">レイアウト</button>
+            <button class="tab-btn" onclick="switchTab('tab-students')">生徒管理</button>
+            <button class="tab-btn" onclick="switchTab('tab-manual')">座席配置</button>
+            <button class="tab-btn" onclick="switchTab('tab-roulette')">ルーレット設定</button>
+            <button class="tab-btn" onclick="switchTab('tab-settings')">データ設定</button>
+        </div>
+
+        <!-- Tab: Intro -->
+        <div id="tab-intro" class="tab-pane">
+            <div class="card">
+                <h3>SmartSeat Pro の使い方</h3>
+                <div style="line-height: 1.8;">
+                    <p>このアプリは、クラス運営を円滑にするための高機能席替えツールです。</p>
+                    
+                    <!-- 1. トップページについて -->
+                    <h4 style="margin-top: 1rem; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">トップページ（実行画面）について</h4>
+                    <p>トップページは、席替えを実際に行うための画面です。<br>生徒に見せるのは、基本的にこの画面のみを想定しています。</p>
+                    <ul style="list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem;">
+                        <li><strong>1～5のスタートボタン</strong>: <br>どれを選んでも結果は同じです。生徒に選ばせることで「こちらが作為的に座席を操作している」ことをバレにくくするための演出機能です。</li>
+                        <li><strong>印刷ボタン</strong>: <br>座席表が生徒向き（前方用）、教員向き（手元用）の2種類自動で作成されます。</li>
+                        <li><strong>保存ボタン</strong>: <br>座席設定や生徒の情報などのバックアップが取れます。</li>
+                        <li><strong>リセットボタン</strong>: <br>表示されている座席を空席に戻します（データは消えません）。</li>
+                    </ul>
+
+                    <!-- 2. 管理画面の各機能 -->
+                    <h4 style="margin-top: 1rem; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">管理画面の各機能</h4>
+                    <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+                        <li><strong>レイアウト設定</strong>: クラスの縦・横の座席数を設定します。「×」で空席を作れます。</li>
+                        <li><strong>生徒管理</strong>: 生徒の名簿を登録します。CSVインポートも可能です。</li>
+                        <li><strong>座席配置</strong>:
+                            <ul style="list-style-type: disc; margin-left: 1rem;">
+                                <li>通常はランダムに決定されます。</li>
+                                <li>特定の生徒を特定の席に配置したい場合は、ここで指定します。</li>
+                                <li>「詳細設定」をオンにすると、練習モード（指定回数目だけ本番配置にする機能）が使えます。</li>
+                            </ul>
+                        </li>
+                        <li><strong>ルーレット設定</strong>: 演出の長さや効果音を設定します。</li>
+                        <li><strong>データ設定</strong>: データの保存・読み込みや初期化を行います。</li>
+                    </ol>
+
+                    <!-- 3. おすすめの使い方 -->
+                    <h4 style="margin-top: 1rem; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">おすすめの使い方（基本の流れ）</h4>
+                    <ol style="margin-left: 1.5rem;">
+                        <li>教員用管理モードで、教室レイアウトと名簿を準備</li>
+                        <li>必要に応じて、座席配置を調整</li>
+                        <li>トップページで席替えを実行</li>
+                    </ol>
+
+                    <p class="text-red font-bold mt-4">注意: この管理画面は生徒に見せないようにしてください。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Layout -->
+        <div id="tab-layout" class="tab-pane hidden">
+            <div class="card">
+                <h3>座席レイアウト設定</h3>
+                <div class="flex gap-4 items-center justify-center">
+                    <div class="text-center">
+                        <label>横</label><br>
+                        <input type="number" id="inp-cols" class="layout-input" min="1" max="8" value="6" onchange="updateGridSettings()">
+                    </div>
+                    <div class="text-center">
+                        <label>縦</label><br>
+                        <input type="number" id="inp-rows" class="layout-input" min="1" max="8" value="5" onchange="updateGridSettings()">
+                    </div>
+                    <div class="text-center" style="margin-left: 1rem; align-self: center;">
+                        <span id="total-seats-display" class="font-bold text-lg text-primary-dark">合計: 30席</span>
+                    </div>
+                    <div style="margin-left: 1rem;">
+                        <button class="primary" onclick="generateAdminGrid()">プレビュー更新</button>
+                    </div>
+                </div>
+                <p class="text-light text-center" style="margin-top:1rem; font-size:0.9rem;">
+                    下のプレビューをクリックして「空席（使用しない席）」を設定できます。<br>
+                    グレーになった席には生徒は配置されません。
+                </p>
+                <div class="flex flex-col items-center mt-4 p-4 border rounded bg-slate-50">
+                    <div style="width: 120px; height: 30px; background: #64748b; color: white; display: flex; align-items: center; justify-content: center; border-radius: 4px; margin-bottom: 1rem; font-size: 0.8rem; font-weight: bold;">教卓</div>
+                    <div id="admin-layout-preview" style="display:grid; gap:0.5rem; justify-content:center;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Students -->
+        <div id="tab-students" class="tab-pane hidden">
+            <div class="card">
+                <h3>生徒データ管理</h3>
+                
+                <div class="mb-4 flex items-center gap-4 bg-slate-50 p-2 rounded border">
+                    <label class="font-bold">座席表に番号を表示する:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="show-id-toggle" onchange="saveSettings()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="flex gap-2 mb-4">
+                    <button onclick="document.getElementById('csv-upload').click()">CSVインポート</button>
+                    <input type="file" id="csv-upload" class="hidden" accept=".csv" onchange="importCSV(this)">
+                    <button onclick="exportCSV()">CSVエクスポート</button>
+                    <button class="danger" onclick="clearStudents()">全削除</button>
+                </div>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    <table style="width:100%; border-collapse: collapse;">
+                        <thead style="background:#f1f5f9; position:sticky; top:0;">
+                            <tr>
+                                <th class="p-2 text-center">番号</th>
+                                <th class="p-2 text-center">氏名</th>
+                                <th class="p-2 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="student-list-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="flex gap-2 mt-4 items-end justify-center bg-slate-50 p-2 rounded">
+                    <input type="number" id="add-num" placeholder="No." style="width:60px">
+                    <input type="text" id="add-name" placeholder="氏名" style="width:150px">
+                    <button class="primary" onclick="addStudentManual()">追加</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Manual Arrangement -->
+        <div id="tab-manual" class="tab-pane hidden">
+            <div class="card">
+                <h3>座席配置設定</h3>
+                <div class="mb-4 flex items-center gap-4 p-2 bg-yellow-50 rounded border border-yellow-200">
+                    <label class="font-bold text-yellow-800">詳細設定（練習・カウント機能）を使う:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="advanced-mode-toggle" onchange="toggleAdvancedMode()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="advanced-settings-area" class="hidden p-3 bg-gray-100 rounded mb-4">
+                    <div class="flex gap-4 items-center mb-2">
+                        <div>
+                            <label class="font-bold">練習回数:</label>
+                            <select id="magic-target-count" onchange="saveSettings()">
+                                <option value="0">設定しない（常にランダム）</option>
+                                <option value="1">練習なし（1回目が本番）</option>
+                                <option value="2" selected>1回練習（2回目が本番）</option>
+                                <option value="3">2回練習（3回目が本番）</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="font-bold">現在のカウント:</label>
+                            <span id="current-shuffle-count" class="font-bold text-lg">0</span>
+                        </div>
+                        <button onclick="resetCounter()" style="font-size:0.8rem">カウンタリセット</button>
+                    </div>
+                </div>
+                <p style="font-size:0.9rem; color:#c2410c;">
+                    下の座席をクリックして、その席に座る生徒を選択してください。<br>
+                    未指定の席（空欄）は、本番時にランダムに埋められます。
+                </p>
+                <div class="flex gap-2 mb-2">
+                     <button class="danger small" onclick="clearTargetArrangement()">全ての配置をクリア</button>
+                     <button class="small" onclick="fillRandomly()">残りをランダムで埋める</button>
+                </div>
+            </div>
+            <div id="manual-grid-area" style="border: 2px solid #fdba74; padding: 1rem; border-radius: 8px;"></div>
+        </div>
+
+        <!-- Tab: Roulette Settings -->
+        <div id="tab-roulette" class="tab-pane hidden">
+             <div class="card">
+                <h3>ルーレット設定</h3>
+                <div style="margin-bottom: 2rem;">
+                    <div class="flex items-center gap-4 mb-4">
+                        <label class="font-bold" style="width:100px;">効果音</label>
+                        <label class="switch">
+                            <input type="checkbox" id="sound-toggle" onchange="saveSettings()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <p class="text-sm text-light">※端末の音量設定にご注意ください。</p>
+                </div>
+                <div>
+                    <div class="flex items-center gap-4">
+                        <label class="font-bold" style="width:100px;">演出の長さ</label>
+                        <select id="roulette-duration" onchange="saveSettings()" style="width:200px;">
+                            <option value="short">短め (約2秒)</option>
+                            <option value="normal">普通 (約5秒)</option>
+                            <option value="long">長め (約8秒)</option>
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <button class="primary small" onclick="testSound()">🔊 テスト再生</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Data Settings -->
+        <div id="tab-settings" class="tab-pane hidden">
+            <div class="card">
+                <h3>データ設定 (保存・復元)</h3>
+                <div class="mb-6 p-4 border border-blue-200 bg-blue-50 rounded">
+                    <h4 class="font-bold mb-2">📥 データの読み込み (インポート)</h4>
+                    <div class="flex gap-2">
+                        <button onclick="document.getElementById('json-upload').click()">ファイルを選択</button>
+                        <input type="file" id="json-upload" class="hidden" accept=".json" onchange="importAppData(this)">
+                    </div>
+                </div>
+                <div class="mb-6 p-4 border border-green-200 bg-green-50 rounded">
+                    <h4 class="font-bold mb-2">📤 データの保存 (エクスポート)</h4>
+                    <button class="primary" onclick="exportAppData()">データを保存する</button>
+                </div>
+                <div class="p-4 border border-red-200 bg-red-50 rounded">
+                    <h4 class="font-bold mb-2 text-danger">⚠️ アプリ初期化</h4>
+                    <button class="danger" onclick="resetAllData()">全データ初期化</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Intro Modal -->
+<div id="modal-overlay" class="hidden">
+    <div id="modal-content" class="modal-box">
+        <h2 id="modal-title" class="text-lg font-bold mb-4"></h2>
+        <div id="modal-body" class="text-left mb-4" style="white-space: pre-wrap; line-height: 1.6;"></div>
+        <div id="modal-footer" class="mt-2">
+            <div id="modal-check-container" class="hidden mb-4 text-center">
+                <label><input type="checkbox" id="modal-dont-show"> 今後表示しない</label>
+            </div>
+            <button class="primary" onclick="closeModal()">理解しました</button>
+        </div>
+    </div>
+</div>
+
+<!-- Student Selector Modal (Wide) -->
+<div id="selector-overlay" class="hidden">
+    <div class="selector-modal">
+        <div class="selector-header">
+            <h3 class="font-bold text-lg mb-2">生徒を選択</h3>
+            <p class="text-sm text-light mb-4">この座席に座らせる生徒を選んでください</p>
+            <div style="margin-bottom:1rem;">
+                 <button class="danger w-full" onclick="unassignCurrentSeat()">座席を空にする（指定なし）</button>
+            </div>
+        </div>
+        
+        <!-- Scrollable Body -->
+        <div class="selector-body">
+            <div id="student-selector-list" class="selection-grid"></div>
+        </div>
+
+        <div class="selector-footer" style="margin-top:1rem;">
+            <button onclick="closeSelectorModal()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * SmartSeat Pro - Logic
+ */
+
+// --- Global State ---
+const APP_ID = 'smartseat_v23';
+let state = {
+    cols: 6,
+    rows: 5,
+    voidSeats: [], 
+    students: [],  // {id, name, active}
+    currentArrangement: [], 
+    targetArrangement: [], 
+    magicTargetCount: 2,   
+    shuffleCount: 0,
+    seatWidth: 110,
+    soundEnabled: true,
+    rouletteDuration: 'short',
+    showIds: true,
+    advancedMode: false,
+    hasSeenIntro: false,
+    hasSeenAdminWarning: false
+};
+
+// Temp state
+let selectedSeatIndexForMagic = null; 
+let isAnimating = false;
+let audioContext = null;
+let currentModalType = ''; // 'intro' or 'admin'
+
+// --- Initialization ---
+document.addEventListener('DOMContentLoaded', () => {
+    loadData();
+    // RESET COUNTER ON LOAD
+    state.shuffleCount = 0;
+    saveData();
+    
+    renderPublicGrid();
+    setupEventListeners();
+    
+    // Check Intro
+    if (!state.hasSeenIntro) {
+        showIntroModal();
+    }
+});
+
+function setupEventListeners() {
+    document.getElementById('logo-trigger').addEventListener('click', openAdminPanel);
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('admin')) {
+        openAdminPanel();
+    }
+}
+
+// --- Modals ---
+function showIntroModal() {
+    currentModalType = 'intro';
+    document.getElementById('modal-title').innerText = 'ようこそ SmartSeat へ';
+    document.getElementById('modal-body').innerText = 
+`このアプリは、席替えを効率化し、教員がクラス運営をしやすくなるように作られています。
+席替え中はトップページを使い、準備や設定は教員用管理モードで行ってください。
+教員用管理モードへは左上の "Smart Seat" をクリックしてください。`;
+    document.getElementById('modal-check-container').classList.add('hidden');
+    document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function showAdminWarningModal() {
+    currentModalType = 'admin';
+    document.getElementById('modal-title').innerText = '⚠️ 教員用管理画面';
+    document.getElementById('modal-body').innerText = 
+`この画面は、席替えの準備・調整を行うためのものです。
+生徒に見せると、 「操作している」「意図的に決めている」
+ と誤解される可能性があります。席替え中はトップページのみを表示してください。`;
+    document.getElementById('modal-check-container').classList.remove('hidden');
+    document.getElementById('modal-dont-show').checked = false;
+    document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function closeModal() {
+    const overlay = document.getElementById('modal-overlay');
+    overlay.classList.add('hidden');
+    
+    if (currentModalType === 'intro') {
+        state.hasSeenIntro = true;
+        saveData();
+    } else if (currentModalType === 'admin') {
+        const dontShow = document.getElementById('modal-dont-show').checked;
+        if (dontShow) {
+            state.hasSeenAdminWarning = true;
+            saveData();
+        }
+        // Proceed to show admin panel content (it was hidden behind modal visually)
+    }
+}
+
+// --- Data Persistence ---
+function saveData() {
+    localStorage.setItem(APP_ID, JSON.stringify(state));
+}
+
+function loadData() {
+    const saved = localStorage.getItem(APP_ID);
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        state = { ...state, ...parsed };
+        if(state.hasSeenIntro === undefined) state.hasSeenIntro = false;
+        if(state.hasSeenAdminWarning === undefined) state.hasSeenAdminWarning = false;
+    } else {
+        createDummyData();
+    }
+    updateUIFromState();
+}
+
+function createDummyData() {
+    state.students = [];
+    for(let i=1; i<=30; i++) {
+        state.students.push({
+            id: i,
+            name: `生徒 ${i}`,
+            active: true
+        });
+    }
+    state.currentArrangement = state.students.map(s => s.id);
+    const totalSeats = state.rows * state.cols;
+    while(state.currentArrangement.length < totalSeats) {
+        state.currentArrangement.push(null);
+    }
+    state.targetArrangement = new Array(totalSeats).fill(null);
+}
+
+function updateUIFromState() {
+    document.getElementById('inp-cols').value = state.cols;
+    document.getElementById('inp-rows').value = state.rows;
+    document.getElementById('magic-target-count').value = state.magicTargetCount;
+    document.getElementById('current-shuffle-count').innerText = state.shuffleCount;
+    document.getElementById('counter-display').innerText = `Count: ${state.shuffleCount}`;
+    document.getElementById('sound-toggle').checked = state.soundEnabled;
+    document.getElementById('roulette-duration').value = state.rouletteDuration;
+    document.getElementById('show-id-toggle').checked = state.showIds;
+    document.getElementById('advanced-mode-toggle').checked = state.advancedMode;
+    toggleAdvancedModeUI(state.advancedMode);
+    updateTotalSeatsDisplay();
+}
+
+function toggleAdvancedMode() {
+    state.advancedMode = document.getElementById('advanced-mode-toggle').checked;
+    saveData();
+    toggleAdvancedModeUI(state.advancedMode);
+}
+
+function toggleAdvancedModeUI(isAdvanced) {
+    const area = document.getElementById('advanced-settings-area');
+    const counterDisplay = document.getElementById('counter-display');
+    if (isAdvanced) {
+        area.classList.remove('hidden');
+        counterDisplay.classList.remove('hidden');
+    } else {
+        area.classList.add('hidden');
+        counterDisplay.classList.add('hidden');
+    }
+}
+
+function updateTotalSeatsDisplay() {
+    const total = state.rows * state.cols;
+    const voidCount = state.voidSeats.length;
+    document.getElementById('total-seats-display').innerText = `合計: ${total - voidCount}席`;
+}
+
+// --- Audio Logic ---
+function initAudio() {
+    if(!audioContext) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioContext();
+    }
+    if(audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+}
+
+function playTickSound() {
+    if(!state.soundEnabled) return;
+    initAudio();
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.03);
+    gain.gain.setValueAtTime(0.05, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.03);
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.05);
+}
+
+function playFinishSound() {
+    if(!state.soundEnabled) return;
+    initAudio();
+    const now = audioContext.currentTime;
+    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, now + i*0.05);
+        gain.gain.linearRampToValueAtTime(0.1, now + i*0.05 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.05 + 0.5);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(now + i*0.05);
+        osc.stop(now + i*0.05 + 0.6);
+    });
+}
+
+function testSound() {
+    initAudio();
+    playTickSound();
+    setTimeout(playTickSound, 100);
+    setTimeout(playTickSound, 200);
+    setTimeout(playFinishSound, 400);
+}
+
+// --- Grid Rendering Logic ---
+function renderPublicGrid() {
+    const grid = document.getElementById('seat-grid');
+    grid.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+    grid.innerHTML = '';
+
+    const totalSeats = state.rows * state.cols;
+    const isInitialEmpty = (state.shuffleCount === 0);
+    
+    for (let i = 0; i < totalSeats; i++) {
+        const seatDiv = document.createElement('div');
+        seatDiv.className = 'seat';
+        seatDiv.id = `seat-${i}`;
+        applySeatStyle(seatDiv);
+
+        if (state.voidSeats.includes(i)) {
+            seatDiv.classList.add('void');
+        } else {
+            if (isInitialEmpty) {
+                seatDiv.innerHTML = `<span class="seat-num"></span><div class="seat-name"></div>`;
+            } else {
+                const studentId = state.currentArrangement[i];
+                if (studentId) {
+                    const student = state.students.find(s => s.id === studentId);
+                    if (student) {
+                        let inner = '';
+                        if(state.showIds) inner += `<span class="seat-num">${student.id}</span>`;
+                        inner += `<div class="seat-name">${student.name}</div>`;
+                        seatDiv.innerHTML = inner;
+                    }
+                } else {
+                    seatDiv.innerHTML = `<span class="seat-num"></span>`;
+                }
+            }
+        }
+        grid.appendChild(seatDiv);
+    }
+    renderPrintGrids();
+}
+
+function resetDisplay() {
+    if(confirm('座席の表示をリセット（空席に）しますか？\n※設定や名簿データは消えません。')) {
+        state.shuffleCount = 0;
+        saveData();
+        renderPublicGrid();
+        updateUIFromState();
+    }
+}
+
+function renderPrintGrids() {
+    const gridStudent = document.getElementById('print-grid-student');
+    const gridTeacher = document.getElementById('print-grid-teacher');
+    const tplCols = `repeat(${state.cols}, 1fr)`;
+    const tplRows = `repeat(${state.rows}, 1fr)`;
+    
+    [gridStudent, gridTeacher].forEach(g => {
+        g.style.gridTemplateColumns = tplCols;
+        g.style.gridTemplateRows = tplRows;
+        g.innerHTML = '';
+    });
+    
+    const totalSeats = state.rows * state.cols;
+    
+    for (let i = 0; i < totalSeats; i++) {
+        const createSeatNode = () => {
+            const div = document.createElement('div');
+            div.className = 'print-seat';
+            if (state.voidSeats.includes(i)) {
+                div.classList.add('void');
+            } else {
+                const studentId = state.currentArrangement[i];
+                if (studentId) {
+                    const student = state.students.find(s => s.id === studentId);
+                    if (student) {
+                        let inner = '';
+                        if(state.showIds) inner += `<span class="print-num">${student.id}</span>`;
+                        inner += `<div class="print-name">${student.name}</div>`;
+                        div.innerHTML = inner;
+                    }
+                }
+            }
+            return div;
+        };
+        gridStudent.appendChild(createSeatNode());
+        gridTeacher.appendChild(createSeatNode());
+    }
+}
+
+function applySeatStyle(div) {
+    const w = state.seatWidth || 110;
+    const h = w * 0.6;
+    const fs = w * 0.14;
+    div.style.width = `${w}px`;
+    div.style.height = `${h}px`;
+    div.style.fontSize = `${fs}px`;
+}
+
+function zoomGrid(dir) {
+    const currentW = state.seatWidth || 110;
+    const newW = Math.max(60, Math.min(200, currentW + (dir * 10)));
+    state.seatWidth = newW;
+    saveData();
+    const seats = document.querySelectorAll('.seat');
+    seats.forEach(s => applySeatStyle(s));
+}
+
+// --- Admin Logic ---
+function openAdminPanel() {
+    document.getElementById('admin-panel').classList.remove('hidden');
+    
+    // Check Warning
+    if (!state.hasSeenAdminWarning) {
+        showAdminWarningModal();
+    }
+    
+    refreshAdminViews();
+}
+
+function exitAdmin() {
+    document.getElementById('admin-panel').classList.add('hidden');
+    saveData();
+    renderPublicGrid();
+    updateUIFromState();
+}
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+    document.getElementById(tabId).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if(tabId === 'tab-manual') renderManualGrid();
+    if(tabId === 'tab-layout') generateAdminGrid();
+    if(tabId === 'tab-students') renderStudentList();
+}
+
+function updateGridSettings() {
+    const r = parseInt(document.getElementById('inp-rows').value);
+    const c = parseInt(document.getElementById('inp-cols').value);
+    state.rows = r;
+    state.cols = c;
+    updateTotalSeatsDisplay();
+    const newSize = r * c;
+    const oldArr = state.currentArrangement;
+    let newArr = new Array(newSize).fill(null);
+    for(let i=0; i<Math.min(oldArr.length, newSize); i++) newArr[i] = oldArr[i];
+    state.currentArrangement = newArr;
+    let newTarget = new Array(newSize).fill(null);
+    for(let i=0; i<Math.min(state.targetArrangement.length, newSize); i++) newTarget[i] = state.targetArrangement[i];
+    state.targetArrangement = newTarget;
+    generateAdminGrid();
+}
+
+function generateAdminGrid() {
+    const container = document.getElementById('admin-layout-preview');
+    container.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+    container.innerHTML = '';
+    const total = state.rows * state.cols;
+    for(let i=0; i<total; i++) {
+        const div = document.createElement('div');
+        div.style.border = '2px solid #cbd5e1'; 
+        div.style.borderRadius = '6px';
+        div.style.height = '60px'; 
+        div.style.width = '60px'; 
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.cursor = 'pointer';
+        div.style.background = '#fff';
+        div.style.margin = '0 auto';
+        if(state.voidSeats.includes(i)) {
+            div.style.background = '#94a3b8';
+            div.style.borderStyle = 'dashed';
+            div.innerText = '×';
+            div.style.color = 'white';
+            div.style.fontWeight = 'bold';
+        }
+        div.onclick = () => toggleVoidSeat(i);
+        container.appendChild(div);
+    }
+}
+
+function toggleVoidSeat(index) {
+    if(state.voidSeats.includes(index)) {
+        state.voidSeats = state.voidSeats.filter(idx => idx !== index);
+    } else {
+        state.voidSeats.push(index);
+    }
+    generateAdminGrid();
+    updateTotalSeatsDisplay();
+}
+
+// --- Admin: Student Tab ---
+function renderStudentList() {
+    const tbody = document.getElementById('student-list-tbody');
+    tbody.innerHTML = '';
+    state.students.sort((a,b) => a.id - b.id).forEach(s => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #eee';
+        tr.innerHTML = `
+            <td class="p-2 text-center">${s.id}</td>
+            <td class="p-2 text-center">${s.name}</td>
+            <td class="p-2 text-center">
+                <button class="danger small" onclick="deleteStudent(${s.id})">削除</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function addStudentManual() {
+    const id = parseInt(document.getElementById('add-num').value);
+    const name = document.getElementById('add-name').value;
+    if(!id || !name) return alert('番号と氏名は必須です');
+    if(state.students.find(s => s.id === id)) return alert('番号が重複しています');
+    state.students.push({ id, name, active: true });
+    renderStudentList();
+    document.getElementById('add-name').value = '';
+    document.getElementById('add-num').value = '';
+}
+
+function deleteStudent(id) {
+    if(!confirm('削除しますか？')) return;
+    state.students = state.students.filter(s => s.id !== id);
+    renderStudentList();
+}
+
+function clearStudents() {
+    if(!confirm('本当に全員削除しますか？')) return;
+    state.students = [];
+    renderStudentList();
+}
+
+// --- CSV Logic ---
+function importCSV(input) {
+    const file = input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r\n|\n/);
+        const newStudents = [];
+        lines.forEach((line, idx) => {
+            if(idx === 0 && line.includes('出席番号')) return;
+            if(!line.trim()) return;
+            const cols = line.split(',');
+            if(cols.length >= 2) {
+                newStudents.push({
+                    id: parseInt(cols[0]),
+                    name: cols[1].trim(),
+                    active: true
+                });
+            }
+        });
+        if(newStudents.length > 0) {
+            state.students = newStudents;
+            alert(`${newStudents.length}名の生徒をインポートしました`);
+            renderStudentList();
+        }
+    };
+    reader.readAsText(file); 
+}
+
+function exportCSV() {
+    let csv = "出席番号,氏名\n";
+    state.students.sort((a,b) => a.id - b.id).forEach(s => {
+        csv += `${s.id},${s.name}\n`;
+    });
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csv], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `student_list.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function exportAppData() {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const dataStr = JSON.stringify(state);
+    const blob = new Blob([dataStr], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `smartseat_backup_${dateStr}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function importAppData(input) {
+    const file = input.files[0];
+    if(!file) return;
+    if(!confirm('現在のデータを上書きします。よろしいですか？')) {
+        input.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const json = JSON.parse(e.target.result);
+            if (json.students && json.rows && json.cols) {
+                state = json;
+                saveData();
+                alert('データを読み込みました。アプリを再読み込みします。');
+                location.reload();
+            } else {
+                alert('無効なデータファイルです。');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('ファイルの読み込みに失敗しました。');
+        }
+    };
+    reader.readAsText(file);
+}
+
+// --- Admin: Manual Arrangement ---
+function renderManualGrid() {
+    const grid = document.getElementById('manual-grid-area');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+    grid.style.gap = '0.5rem';
+    grid.innerHTML = '';
+    const total = state.rows * state.cols;
+    if(state.targetArrangement.length !== total) state.targetArrangement = new Array(total).fill(null);
+    for(let i=0; i<total; i++) {
+        const div = document.createElement('div');
+        div.className = 'seat';
+        div.style.cursor = 'pointer';
+        div.style.background = '#f8fafc'; 
+        if(state.voidSeats.includes(i)) {
+            div.classList.add('void');
+        } else {
+            const sId = state.targetArrangement[i];
+            if(sId) {
+                const s = state.students.find(x => x.id === sId);
+                if(s) {
+                    div.style.background = '#fff';
+                    div.style.border = '2px solid #3b82f6';
+                    div.innerHTML = `<span class="seat-num">${s.id}</span><div class="seat-name">${s.name}</div>`;
+                } else {
+                     div.innerHTML = '<span style="color:#ccc; font-size:0.7rem;">?</span>';
+                }
+            } else {
+                div.innerHTML = '<span style="color:#cbd5e1; font-size:1.5rem;">+</span>';
+            }
+        }
+        div.onclick = () => openStudentSelector(i);
+        grid.appendChild(div);
+    }
+}
+
+function openStudentSelector(seatIndex) {
+    if(state.voidSeats.includes(seatIndex)) return;
+    selectedSeatIndexForMagic = seatIndex;
+    const overlay = document.getElementById('selector-overlay');
+    const list = document.getElementById('student-selector-list');
+    list.innerHTML = '';
+    const assignedIds = state.targetArrangement.filter((id, idx) => id !== null && idx !== seatIndex);
+    state.students.forEach(s => {
+        if(!assignedIds.includes(s.id)) {
+            const chip = document.createElement('div');
+            chip.className = `student-chip`;
+            chip.innerText = `${s.id}. ${s.name}`;
+            chip.onclick = () => assignStudentToTarget(s.id);
+            list.appendChild(chip);
+        }
+    });
+    overlay.classList.remove('hidden');
+}
+
+function closeSelectorModal() {
+    document.getElementById('selector-overlay').classList.add('hidden');
+    selectedSeatIndexForMagic = null;
+}
+
+function assignStudentToTarget(studentId) {
+    if(selectedSeatIndexForMagic !== null) {
+        state.targetArrangement[selectedSeatIndexForMagic] = studentId;
+        renderManualGrid();
+        saveData();
+    }
+    closeSelectorModal();
+}
+
+function unassignCurrentSeat() {
+    if(selectedSeatIndexForMagic !== null) {
+        state.targetArrangement[selectedSeatIndexForMagic] = null;
+        renderManualGrid();
+        saveData();
+    }
+    closeSelectorModal();
+}
+
+function clearTargetArrangement() {
+    if(!confirm('固定配置をすべてクリアしますか？')) return;
+    state.targetArrangement.fill(null);
+    renderManualGrid();
+    saveData();
+}
+
+function fillRandomly() {
+    const usedIds = state.targetArrangement.filter(id => id !== null);
+    const availableStudents = state.students.filter(s => s.active && !usedIds.includes(s.id)).map(s => s.id);
+    const shuffled = shuffleArray(availableStudents);
+    let sIdx = 0;
+    for(let i=0; i<state.targetArrangement.length; i++) {
+        if(!state.voidSeats.includes(i) && state.targetArrangement[i] === null && sIdx < shuffled.length) {
+            state.targetArrangement[i] = shuffled[sIdx++];
+        }
+    }
+    renderManualGrid();
+    saveData();
+}
+
+function saveSettings() {
+    state.magicTargetCount = parseInt(document.getElementById('magic-target-count').value);
+    state.soundEnabled = document.getElementById('sound-toggle').checked;
+    state.rouletteDuration = document.getElementById('roulette-duration').value;
+    state.showIds = document.getElementById('show-id-toggle').checked;
+    saveData();
+    updateUIFromState();
+}
+
+function resetCounter() {
+    state.shuffleCount = 0;
+    saveData();
+    updateUIFromState();
+}
+
+// --- Main Logic: Shuffle ---
+function shuffleArray(array) {
+    let currentIndex = array.length, randomIndex;
+    while (currentIndex != 0) {
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex--;
+        [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+    }
+    return array;
+}
+
+async function startRoulette() {
+    if(isAnimating) return;
+    isAnimating = true;
+    const buttons = document.querySelectorAll('.start-btn');
+    buttons.forEach(b => b.disabled = true);
+
+    const activeStudents = state.students.filter(s => s.active);
+    const activeIds = activeStudents.map(s => s.id);
+    const totalSeats = state.rows * state.cols;
+    let finalArrangement = new Array(totalSeats).fill(null);
+    
+    let isMagic = false;
+    
+    if (state.advancedMode) {
+        state.shuffleCount++;
+        saveData();
+        if (state.magicTargetCount > 0 && state.shuffleCount === state.magicTargetCount) {
+            isMagic = true;
+        }
+    } else {
+        state.shuffleCount++;
+        saveData();
+        isMagic = true;
+    }
+    
+    if (isMagic) {
+        const fixedIds = state.targetArrangement.filter(id => id !== null);
+        const remainingStudents = activeIds.filter(id => !fixedIds.includes(id));
+        const shuffledRemaining = shuffleArray(remainingStudents);
+        let sIdx = 0;
+        for(let i=0; i<totalSeats; i++) {
+            if(state.voidSeats.includes(i)) continue;
+            if(state.targetArrangement[i] !== null) {
+                finalArrangement[i] = state.targetArrangement[i];
+            } else if(sIdx < shuffledRemaining.length) {
+                finalArrangement[i] = shuffledRemaining[sIdx++];
+            }
+        }
+    } else {
+        const shuffledIds = shuffleArray([...activeIds]);
+        let sIdx = 0;
+        for(let i=0; i<totalSeats; i++) {
+            if(!state.voidSeats.includes(i) && sIdx < shuffledIds.length) {
+                finalArrangement[i] = shuffledIds[sIdx++];
+            }
+        }
+    }
+    
+    document.getElementById('stage-area').scrollIntoView({behavior: 'smooth'});
+    const seatDivs = Array.from(document.querySelectorAll('.seat:not(.void)'));
+    
+    if (activeStudents.length === 0) {
+        isAnimating = false;
+        buttons.forEach(b => b.disabled = false);
+        return alert("生徒がいません");
+    }
+
+    const showRandomValues = () => {
+        playTickSound();
+        seatDivs.forEach(div => {
+            const randomStudent = activeStudents[Math.floor(Math.random() * activeStudents.length)];
+            const nameEl = div.querySelector('.seat-name');
+            const numEl = div.querySelector('.seat-num');
+            if(nameEl) nameEl.innerText = randomStudent.name;
+            if(numEl) numEl.innerText = state.showIds ? randomStudent.id : '';
+            div.className = 'seat shuffling'; 
+            applySeatStyle(div);
+        });
+    };
+
+    let loopCount = 40;
+    if(state.rouletteDuration === 'normal') loopCount = 80;
+    if(state.rouletteDuration === 'long') loopCount = 120;
+
+    for(let i=0; i<loopCount; i++) {
+        showRandomValues();
+        await new Promise(r => setTimeout(r, 50));
+    }
+    for(let delay of [200, 400, 700]) {
+        showRandomValues();
+        await new Promise(r => setTimeout(r, delay));
+    }
+
+    state.currentArrangement = finalArrangement;
+    saveData();
+    renderPublicGrid(); 
+    updateUIFromState();
+    playFinishSound();
+
+    const finalSeats = document.querySelectorAll('.seat:not(.void)');
+    finalSeats.forEach((s, i) => {
+        setTimeout(() => {
+            s.classList.add('flash');
+            setTimeout(() => s.classList.remove('flash'), 600);
+        }, i * 20);
+    });
+
+    isAnimating = false;
+    buttons.forEach(b => b.disabled = false);
+}
+
+function resetAllData() {
+    if(confirm('全データを削除して初期状態に戻しますか？')) {
+        localStorage.removeItem(APP_ID);
+        location.reload();
+    }
+}
+</script>
+</body>
+</html>
