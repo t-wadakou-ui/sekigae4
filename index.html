@@ -622,7 +622,15 @@
                      <button class="small" onclick="fillRandomly()">残りをランダムで埋める</button>
                 </div>
             </div>
-            <div id="manual-grid-area" style="border: 2px solid #fdba74; padding: 1rem; border-radius: 8px;"></div>
+<div id="manual-grid-area"
+     style="border: 2px solid #fdba74;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow:auto;
+            display:flex;
+            justify-content:center;">
+</div>
+
         </div>
 
         <!-- Tab: Roulette Settings -->
@@ -1069,7 +1077,14 @@ function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     event.target.classList.add('active');
     
-    if(tabId === 'tab-manual') renderManualGrid();
+    if (tabId === 'tab-manual') {
+    // 念のため最新レイアウトと同期
+    if (state.targetArrangement.length !== state.rows * state.cols) {
+        state.targetArrangement = new Array(state.rows * state.cols).fill(null);
+    }
+    renderManualGrid();
+}
+
     if(tabId === 'tab-layout') generateAdminGrid();
     if(tabId === 'tab-students') renderStudentList();
 }
@@ -1077,19 +1092,52 @@ function switchTab(tabId) {
 function updateGridSettings() {
     const r = parseInt(document.getElementById('inp-rows').value);
     const c = parseInt(document.getElementById('inp-cols').value);
+
+    const newTotal = r * c;
+    const oldTotal = state.rows * state.cols;
+
+    // ① voidSeats を新サイズに合わせて整理
+    state.voidSeats = state.voidSeats.filter(i => i < newTotal);
+
+    // ② currentArrangement を新サイズで作り直す
+    const oldCurrent = [...state.currentArrangement];
+    const newCurrent = new Array(newTotal).fill(null);
+    for (let i = 0; i < Math.min(oldCurrent.length, newTotal); i++) {
+        newCurrent[i] = oldCurrent[i];
+    }
+    state.currentArrangement = newCurrent;
+
+    // ③ targetArrangement（座席配置）を新サイズで作り直す ← ★重要
+    const oldTarget = [...state.targetArrangement];
+const validStudentIds = state.students.map(s => s.id);
+
+const newTarget = new Array(newTotal).fill(null);
+
+for (let i = 0; i < Math.min(oldTarget.length, newTotal); i++) {
+
+    // ★存在しない生徒を除外（これが神修正）
+    if (validStudentIds.includes(oldTarget[i])) {
+        newTarget[i] = oldTarget[i];
+    } else {
+        newTarget[i] = null;
+    }
+}
+
+state.targetArrangement = newTarget;
+
+
+    // ④ 行・列を確定
     state.rows = r;
     state.cols = c;
+
+    saveData();
+
+    // ⑤ すべての関連UIを再生成
     updateTotalSeatsDisplay();
-    const newSize = r * c;
-    const oldArr = state.currentArrangement;
-    let newArr = new Array(newSize).fill(null);
-    for(let i=0; i<Math.min(oldArr.length, newSize); i++) newArr[i] = oldArr[i];
-    state.currentArrangement = newArr;
-    let newTarget = new Array(newSize).fill(null);
-    for(let i=0; i<Math.min(state.targetArrangement.length, newSize); i++) newTarget[i] = state.targetArrangement[i];
-    state.targetArrangement = newTarget;
     generateAdminGrid();
+    renderManualGrid();   // ← これがないと座席配置タブがズレる
 }
+
 
 function generateAdminGrid() {
     const container = document.getElementById('admin-layout-preview');
@@ -1261,16 +1309,36 @@ function importAppData(input) {
 function renderManualGrid() {
     const grid = document.getElementById('manual-grid-area');
     grid.style.display = 'grid';
-    grid.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
-    grid.style.gap = '0.5rem';
-    grid.innerHTML = '';
+
+grid.style.justifyContent = 'center';
+
+/* ★実際の表示幅を取得（これが超重要） */
+const containerWidth = grid.parentElement.clientWidth;
+
+/* gapの合計幅も考慮 */
+const totalGap = (state.cols - 1) * 8; // gap 0.5rem ≒ 8px
+const usableWidth = containerWidth - totalGap - 10;
+
+/* 座席サイズ自動計算 */
+const seatSize = Math.min(110, Math.floor(usableWidth / state.cols));
+
+grid.style.gridTemplateColumns = `repeat(${state.cols}, ${seatSize}px)`;
+
+grid.style.gap = '8px';
+grid.innerHTML = '';
+
     const total = state.rows * state.cols;
     if(state.targetArrangement.length !== total) state.targetArrangement = new Array(total).fill(null);
     for(let i=0; i<total; i++) {
         const div = document.createElement('div');
-        div.className = 'seat';
-        div.style.cursor = 'pointer';
-        div.style.background = '#f8fafc'; 
+div.className = 'seat';
+
+/* ★追加 */
+applySeatStyle(div);
+
+div.style.cursor = 'pointer';
+div.style.background = '#f8fafc';
+ 
         if(state.voidSeats.includes(i)) {
             div.classList.add('void');
         } else {
@@ -1383,6 +1451,12 @@ function shuffleArray(array) {
 }
 
 async function startRoulette() {
+    // ★ targetArrangement を強制クリーンアップ
+const validIds = state.students.map(s => s.id);
+state.targetArrangement = state.targetArrangement.map(id =>
+    validIds.includes(id) ? id : null
+);
+
     if(isAnimating) return;
     isAnimating = true;
     const buttons = document.querySelectorAll('.start-btn');
@@ -1466,10 +1540,15 @@ async function startRoulette() {
     }
 
     state.currentArrangement = finalArrangement;
-    saveData();
-    renderPublicGrid(); 
-    updateUIFromState();
-    playFinishSound();
+
+// ★ここを追加（超重要）
+state.targetArrangement = [...finalArrangement];
+
+saveData();
+renderPublicGrid(); 
+updateUIFromState();
+playFinishSound();
+
 
     const finalSeats = document.querySelectorAll('.seat:not(.void)');
     finalSeats.forEach((s, i) => {
@@ -1491,4 +1570,5 @@ function resetAllData() {
 }
 </script>
 </body>
+
 </html>
